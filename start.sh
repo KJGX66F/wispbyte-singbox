@@ -1,36 +1,29 @@
 #!/bin/bash
 
-set -e
-
-PORT=${PORT:-16261}
-
-UUID=${UUID:-$(cat /proc/sys/kernel/random/uuid)}
-
 echo "=============================="
 echo "Wispbyte Sing-box"
-echo "PORT: $PORT"
-echo "UUID: $UUID"
 echo "=============================="
 
+PORT=${PORT:-16261}
+UUID=${UUID:-$(cat /proc/sys/kernel/random/uuid)}
 
-ARCH=$(uname -m)
+echo "PORT: $PORT"
+echo "UUID: $UUID"
 
-if [ "$ARCH" = "x86_64" ]; then
-DOWNLOAD="https://github.com/SagerNet/sing-box/releases/latest/download/sing-box-linux-amd64.tar.gz"
-else
-DOWNLOAD="https://github.com/SagerNet/sing-box/releases/latest/download/sing-box-linux-arm64.tar.gz"
-fi
+mkdir -p /home/container/sing-box
 
+cd /home/container/sing-box
 
 if [ ! -f sing-box ]; then
 
 echo "Downloading sing-box..."
 
-wget -q $DOWNLOAD -O singbox.tar.gz
+curl -L -o sing-box.tar.gz \
+https://github.com/SagerNet/sing-box/releases/latest/download/sing-box-linux-amd64.tar.gz
 
-tar -xzf singbox.tar.gz
+tar -xzf sing-box.tar.gz
 
-mv sing-box-*/* .
+cp sing-box-*/sing-box ./sing-box
 
 chmod +x sing-box
 
@@ -39,47 +32,45 @@ fi
 
 cat > config.json <<EOF
 {
-  "log": {
-    "level": "info"
-  },
+"log":{
+"level":"info"
+},
 
-  "inbounds": [
-    {
-      "type": "vless",
-      "tag": "vless-ws",
-      "listen": "::",
-      "listen_port": $PORT,
+"inbounds":[
+{
+"type":"vless",
+"tag":"vless-in",
+"listen":"0.0.0.0",
+"listen_port":$PORT,
 
-      "users": [
-        {
-          "uuid": "$UUID"
-        }
-      ],
+"users":[
+{
+"uuid":"$UUID"
+}
+],
 
-      "transport": {
-        "type": "ws",
-        "path": "/ws"
-      }
-    }
-  ],
+"transport":{
+"type":"ws",
+"path":"/ws"
+}
+}
+],
 
-  "outbounds": [
-    {
-      "type": "direct"
-    }
-  ]
+"outbounds":[
+{
+"type":"direct"
+}
+]
 }
 EOF
 
 
-echo ""
 echo "=============================="
-echo "VLESS WS START"
-echo "PORT=$PORT"
-echo "UUID=$UUID"
-echo "PATH=/ws"
+echo "VLESS WS READY"
+echo "PORT: $PORT"
+echo "UUID: $UUID"
+echo "PATH: /ws"
 echo "=============================="
-echo ""
 
 
 ./sing-box run -c config.json
