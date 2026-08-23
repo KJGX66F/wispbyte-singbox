@@ -1,176 +1,193 @@
 #!/bin/bash
 
 echo "================================="
-echo " Wispbyte VLESS + Cloudflare Tunnel"
+echo " Wispbyte Sing-box VLESS WS"
 echo "================================="
 
+
+# =========================
+# 参数
+# =========================
 
 PORT=16261
 
 UUID=${UUID:-$(cat /proc/sys/kernel/random/uuid)}
 
-
-mkdir -p /home/container/bin
-
-cd /home/container/bin
+PATH_WS="/ws"
 
 
+echo ""
+echo "PORT: $PORT"
+echo "UUID: $UUID"
+echo ""
 
-#################################
+
+# =========================
+# 安装依赖
+# =========================
+
+apt update -y >/dev/null 2>&1
+
+apt install -y wget curl unzip jq >/dev/null 2>&1
+
+
+
+# =========================
 # 下载 sing-box
-#################################
-
-if [ ! -f sing-box ]; then
-
-echo "[1/3] Download sing-box"
+# =========================
 
 
-curl -L \
--o sing-box.tar.gz \
-https://github.com/SagerNet/sing-box/releases/download/v1.12.0/sing-box-1.12.0-linux-amd64.tar.gz
+if [ ! -f "./sing-box" ]; then
 
+echo "Downloading sing-box..."
 
-tar -xzf sing-box.tar.gz
+wget -q https://github.com/SagerNet/sing-box/releases/latest/download/sing-box-linux-amd64.tar.gz
 
+tar -xzf sing-box-linux-amd64.tar.gz
 
-cp sing-box-*/sing-box ./sing-box
+mv sing-box-*/sing-box ./sing-box
 
+chmod +x ./sing-box
 
-chmod +x sing-box
-
+rm -rf sing-box-linux-amd64.tar.gz sing-box-*
 
 fi
 
 
 
-#################################
-# 下载 cloudflared
-#################################
-
-if [ ! -f cloudflared ]; then
-
-echo "[2/3] Download cloudflared"
-
-
-curl -L \
--o cloudflared \
-https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
-
-
-chmod +x cloudflared
-
-
-fi
-
-
-
-
-#################################
-# sing-box 配置
-#################################
+# =========================
+# 创建配置
+# =========================
 
 
 cat > config.json <<EOF
 {
-"log":{
-"level":"info"
-},
+  "log": {
+    "level": "info"
+  },
 
-"inbounds":[
-{
-"type":"vless",
+  "inbounds": [
+    {
+      "type": "vless",
+      "tag": "vless-in",
 
-"listen":"127.0.0.1",
+      "listen": "::",
+      "listen_port": $PORT,
 
-"listen_port":16261,
+      "users": [
+        {
+          "uuid": "$UUID"
+        }
+      ],
 
-
-"users":[
-{
-"uuid":"$UUID"
-}
-],
-
-
-"transport":{
-"type":"ws",
-"path":"/ws"
-}
-
-}
-],
+      "transport": {
+        "type": "ws",
+        "path": "$PATH_WS"
+      }
+    }
+  ],
 
 
-"outbounds":[
-{
-"type":"direct"
-}
-]
-
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
 }
 EOF
 
 
 
+# =========================
+# 启动 sing-box
+# =========================
+
 
 echo ""
-echo "================================="
-echo "UUID:"
-echo "$UUID"
-echo "================================="
-
-
-
-#################################
-# 启动 sing-box
-#################################
-
+echo "Starting sing-box..."
 
 ./sing-box run -c config.json &
-
 
 sleep 3
 
 
 
-echo ""
-echo "Starting Cloudflare Quick Tunnel..."
-echo ""
+# =========================
+# Cloudflare Tunnel
+# =========================
 
 
+if [ ! -f "./cloudflared" ]; then
 
-#################################
-# 启动CF并获取地址
-#################################
+echo "Downloading cloudflared..."
 
+wget -q \
+https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+-O cloudflared
 
-./cloudflared tunnel \
---url http://127.0.0.1:16261 2>&1 | tee tunnel.log &
-
-
-
-sleep 8
-
-
-
-CF_URL=$(grep -o "https://[-a-zA-Z0-9]*\.trycloudflare\.com" tunnel.log | head -1)
-
-
-
-if [ -z "$CF_URL" ]; then
-
-echo "等待CF地址生成..."
-
-sleep 10
-
-CF_URL=$(grep -o "https://[-a-zA-Z0-9]*\.trycloudflare\.com" tunnel.log | head -1)
+chmod +x cloudflared
 
 fi
 
 
 
-HOST=$(echo $CF_URL | sed 's#https://##')
+echo ""
+echo "Starting Cloudflare Tunnel..."
 
+rm -f tunnel.log
+
+
+./cloudflared tunnel \
+--url http://127.0.0.1:$PORT \
+--no-autoupdate \
+2>&1 | tee tunnel.log &
+
+
+
+sleep 10
+
+
+
+# =========================
+# 获取CF地址
+# =========================
+
+
+CF_HOST=""
+
+for i in {1..20}
+do
+
+CF_HOST=$(grep -o "https://[-a-zA-Z0-9]*\.trycloudflare\.com" tunnel.log | head -1)
+
+if [ ! -z "$CF_HOST" ]; then
+break
+fi
+
+sleep 2
+
+done
+
+
+
+if [ -z "$CF_HOST" ]; then
+
+echo "Cloudflare Tunnel failed"
+
+exit 1
+
+fi
+
+
+
+HOST=$(echo $CF_HOST | sed 's#https://##')
+
+
+
+# =========================
+# 输出节点
+# =========================
 
 
 NODE="vless://${UUID}@${HOST}:443?encryption=none&security=tls&type=ws&host=${HOST}&path=%2Fws#Wispbyte-CF"
@@ -180,12 +197,18 @@ NODE="vless://${UUID}@${HOST}:443?encryption=none&security=tls&type=ws&host=${HO
 echo ""
 echo "================================="
 echo " Cloudflare Tunnel:"
-echo "$CF_URL"
+echo "$CF_HOST"
 echo ""
 echo " VLESS 节点:"
 echo "$NODE"
 echo "================================="
 
 
+echo ""
+echo "Keep alive..."
 
-wait
+
+
+# 防止Wispbyte停止
+
+tail -f /dev/null
