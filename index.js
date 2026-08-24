@@ -1,34 +1,63 @@
 const express = require('express');
 const { createProxyMiddleware } = require('http-proxy-middleware');
-const { spawn, execSync } = require('child_process');
+const { spawn, exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.SERVER_PORT || process.env.PORT || 3000;
 const WS_PATH = '/api/v2/telemetry/stream_8f91a';
 const LOCAL_PORT = 10086;
-const sbPath = path.join(__dirname, 'sing-box');
 
-// 如果服务器本地没有 sing-box，则自动下载解压
-if (!fs.existsSync(sbPath)) {
-  console.log('未检测到 sing-box，正在自动获取...');
-  try {
-    execSync('curl -Ls https://github.com/SagerNet/sing-box/releases/latest/download/sing-box-1.11.0-beta.10-linux-amd64.tar.gz -o sb.tar.gz && tar -xvf sb.tar.gz && cp sing-box-*/sing-box ./sing-box && rm -rf sing-box-* sb.tar.gz');
-    console.log('sing-box 下载完毕！');
-  } catch (err) {
-    console.error('下载失败:', err);
+const sbPath = path.join(__dirname, 'sing-box');
+const cfPath = path.join(__dirname, 'cloudflared');
+
+const SB_URL = "https://ghproxy.net/https://github.com/SagerNet/sing-box/releases/download/v1.10.7/sing-box-1.10.7-linux-amd64.tar.gz";
+const CF_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64";
+
+// 启动 sing-box
+function startSingBox() {
+  if (fs.existsSync(sbPath)) {
+    try { fs.chmodSync(sbPath, '755'); } catch (e) {}
+    console.log('[+] 正在启动 sing-box 内核...');
+    spawn(sbPath, ['run', '-c', 'config.json']);
   }
 }
 
-// 启动 sing-box
-if (fs.existsSync(sbPath)) {
-  fs.chmodSync(sbPath, '755');
-  const sb = spawn(sbPath, ['run', '-c', 'config.json']);
-  sb.on('error', (err) => console.error('[sing-box Error]', err));
+// 启动 Cloudflare 临时隧道
+function startCloudflareTunnel() {
+  if (fs.existsSync(cfPath)) {
+    try { fs.chmodSync(cfPath, '755'); } catch (e) {}
+    console.log('[+] 正在启动 Cloudflare 临时隧道...');
+    const cf = spawn(cfPath, ['tunnel', '--url', `http://127.0.0.1:${PORT}`]);
+
+    cf.stderr.on('data', (data) => {
+      const msg = data.toString();
+      const match = msg.match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
+      if (match) {
+        console.log('\n==================================================');
+        console.log(`[★] CF 临时隧道成功生成！`);
+        console.log(`[★] 隧道地址: ${match[0]}`);
+        console.log('==================================================\n');
+      }
+    });
+  }
 }
 
-// 1. 代理 WebSocket 到 sing-box
+// 环境准备与自动下载
+if (!fs.existsSync(sbPath)) {
+  exec(`curl -Ls "${SB_URL}" -o sb.tar.gz && tar -xvf sb.tar.gz && cp sing-box-*/sing-box ./sing-box && rm -rf sing-box-* sb.tar.gz`, () => startSingBox());
+} else {
+  startSingBox();
+}
+
+if (!fs.existsSync(cfPath)) {
+  exec(`curl -Ls "${CF_URL}" -o cloudflared && chmod +x cloudflared`, () => startCloudflareTunnel());
+} else {
+  startCloudflareTunnel();
+}
+
+// WS 节点转发
 const wsProxy = createProxyMiddleware({
   target: `http://127.0.0.1:${LOCAL_PORT}`,
   ws: true,
@@ -37,16 +66,10 @@ const wsProxy = createProxyMiddleware({
 });
 app.use(WS_PATH, wsProxy);
 
-// 2. 根目录伪装真实网站
-app.use('/', createProxyMiddleware({
-  target: 'https://www.bing.com',
-  changeOrigin: true,
-  followRedirects: true,
-  logLevel: 'silent'
-}));
+app.get('/', (req, res) => res.status(200).send('Server Operational'));
 
-const server = app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[+] Web Server 已监听端口 ${PORT}`);
 });
 
 server.on('upgrade', (req, socket, head) => {
@@ -56,3 +79,8 @@ server.on('upgrade', (req, socket, head) => {
     socket.destroy();
   }
 });
+
+// 定时自请求防止休眠
+setInterval(() => {
+  require('http').get(`http://127.0.0.1:${PORT}/`, () => {}).on('error', () => {});
+}, 120000);
