@@ -12,10 +12,10 @@ const LOCAL_PORT = 10086;
 const sbPath = path.join(__dirname, 'sing-box');
 const cfPath = path.join(__dirname, 'cloudflared');
 
-const SB_URL = "https://ghproxy.net/https://github.com/SagerNet/sing-box/releases/download/v1.10.7/sing-box-1.10.7-linux-amd64.tar.gz";
-const CF_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64";
+const SB_URL = "[https://ghproxy.net/https://github.com/SagerNet/sing-box/releases/download/v1.10.7/sing-box-1.10.7-linux-amd64.tar.gz](https://ghproxy.net/https://github.com/SagerNet/sing-box/releases/download/v1.10.7/sing-box-1.10.7-linux-amd64.tar.gz)";
+const CF_URL = "[https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64](https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64)";
 
-// 启动 sing-box
+// 启动 sing-box 内核
 function startSingBox() {
   if (fs.existsSync(sbPath)) {
     try { fs.chmodSync(sbPath, '755'); } catch (e) {}
@@ -29,22 +29,22 @@ function startCloudflareTunnel() {
   if (fs.existsSync(cfPath)) {
     try { fs.chmodSync(cfPath, '755'); } catch (e) {}
     console.log('[+] 正在启动 Cloudflare 临时隧道...');
-    const cf = spawn(cfPath, ['tunnel', '--url', `http://127.0.0.1:${PORT}`]);
+    const cf = spawn(cfPath, ['tunnel', '--url', `[http://127.0.0.1](http://127.0.0.1):${PORT}`]);
 
     cf.stderr.on('data', (data) => {
       const msg = data.toString();
       const match = msg.match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
       if (match) {
-        console.log('\n==================================================');
+        console.log('\\n==================================================');
         console.log(`[★] CF 临时隧道成功生成！`);
         console.log(`[★] 隧道地址: ${match[0]}`);
-        console.log('==================================================\n');
+        console.log('==================================================\\n');
       }
     });
   }
 }
 
-// 环境准备与自动下载
+// 环境检测与二进制自动下载
 if (!fs.existsSync(sbPath)) {
   exec(`curl -Ls "${SB_URL}" -o sb.tar.gz && tar -xvf sb.tar.gz && cp sing-box-*/sing-box ./sing-box && rm -rf sing-box-* sb.tar.gz`, () => startSingBox());
 } else {
@@ -57,9 +57,9 @@ if (!fs.existsSync(cfPath)) {
   startCloudflareTunnel();
 }
 
-// WS 节点转发
+// WebSocket 节点协议转发
 const wsProxy = createProxyMiddleware({
-  target: `http://127.0.0.1:${LOCAL_PORT}`,
+  target: `[http://127.0.0.1](http://127.0.0.1):${LOCAL_PORT}`,
   ws: true,
   changeOrigin: true,
   logLevel: 'silent'
@@ -80,7 +80,7 @@ server.on('upgrade', (req, socket, head) => {
   }
 });
 
-// 定时自请求防止休眠
+// 定时自调心跳，防止容器休眠（每2分钟一次）
 setInterval(() => {
-  require('http').get(`http://127.0.0.1:${PORT}/`, () => {}).on('error', () => {});
+  require('http').get(`[http://127.0.0.1](http://127.0.0.1):${PORT}/`, () => {}).on('error', () => {});
 }, 120000);
