@@ -1,7 +1,11 @@
 {
-  "name": "wispbyte-singbox",
+  "name": "app-service",
   "version": "1.0.0",
   "scripts": {
-    "start": "bash start.sh"
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "http-proxy-middleware": "^2.0.6"
   }
 }
