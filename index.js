@@ -1,6 +1,6 @@
 const express = require('express');
 const { createProxyMiddleware } = require('http-proxy-middleware');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -8,19 +8,27 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const WS_PATH = '/api/v2/telemetry/stream_8f91a';
 const LOCAL_PORT = 10086;
-
-// 1. 启动本地预置的 sing-box 进程
 const sbPath = path.join(__dirname, 'sing-box');
-if (fs.existsSync(sbPath)) {
-  // 赋予可执行权限并启动
-  fs.chmodSync(sbPath, '755');
-  const sb = spawn(sbPath, ['run', '-c', 'config.json']);
-  sb.on('error', (err) => console.error('[Error]', err));
-} else {
-  console.error('[Error] 未在根目录找到 sing-box 二进制文件！');
+
+// 如果服务器本地没有 sing-box，则自动下载解压
+if (!fs.existsSync(sbPath)) {
+  console.log('未检测到 sing-box，正在自动获取...');
+  try {
+    execSync('curl -Ls https://github.com/SagerNet/sing-box/releases/latest/download/sing-box-1.11.0-beta.10-linux-amd64.tar.gz -o sb.tar.gz && tar -xvf sb.tar.gz && cp sing-box-*/sing-box ./sing-box && rm -rf sing-box-* sb.tar.gz');
+    console.log('sing-box 下载完毕！');
+  } catch (err) {
+    console.error('下载失败:', err);
+  }
 }
 
-// 2. 将节点 WS 流量转发至本地 sing-box 端口
+// 启动 sing-box
+if (fs.existsSync(sbPath)) {
+  fs.chmodSync(sbPath, '755');
+  const sb = spawn(sbPath, ['run', '-c', 'config.json']);
+  sb.on('error', (err) => console.error('[sing-box Error]', err));
+}
+
+// 1. 代理 WebSocket 到 sing-box
 const wsProxy = createProxyMiddleware({
   target: `http://127.0.0.1:${LOCAL_PORT}`,
   ws: true,
@@ -29,7 +37,7 @@ const wsProxy = createProxyMiddleware({
 });
 app.use(WS_PATH, wsProxy);
 
-// 3. 根路径反代真实网站（实现深度伪装）
+// 2. 根目录伪装真实网站
 app.use('/', createProxyMiddleware({
   target: 'https://www.bing.com',
   changeOrigin: true,
@@ -38,10 +46,9 @@ app.use('/', createProxyMiddleware({
 }));
 
 const server = app.listen(PORT, () => {
-  console.log(`Service started on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
 
-// 处理 WebSocket 升级握手与路径过滤
 server.on('upgrade', (req, socket, head) => {
   if (req.url.startsWith(WS_PATH)) {
     wsProxy.upgrade(req, socket, head);
