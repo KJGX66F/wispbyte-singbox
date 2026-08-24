@@ -43,7 +43,7 @@
 
 * **语法模板**：
   ```text
-  vless://{UUID}@{IP}:{PORT}?type=ws&security=none&path={PATH}#{节点别名}
+  vless://{UUID}@{IP}:{PORT}?type=ws&security=none&path=%2Fapi%2Fv2%2Ftelemetry%2Fstream_8f91a#WispByte-VLESS
   ```
 
 ### 2. Cloudflare 临时隧道节点模板（开启 TLS）
@@ -51,7 +51,7 @@
 
 * **语法模板**：
   ```text
-  vless://{UUID}@{CF_DOMAIN}:443?type=ws&security=tls&sni={CF_DOMAIN}&path={PATH}#{节点别名}
+  vless://{UUID}@{CF_DOMAIN}:443?type=ws&security=tls&sni={CF_DOMAIN}&path=%2Fapi%2Fv2%2Ftelemetry%2Fstream_8f91a#WispByte-cf-VLESS
   ```
 
 ---
