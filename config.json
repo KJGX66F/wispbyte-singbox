@@ -1,0 +1,28 @@
+{
+  "log": {
+    "level": "fatal"
+  },
+  "inbounds": [
+    {
+      "type": "vless",
+      "tag": "vless-in",
+      "listen": "127.0.0.1",
+      "listen_port": 10086,
+      "users": [
+        {
+          "uuid": "d8f1e2a3-b4c5-4d6e-8f9a-0b1c2d3e4f5a"
+        }
+      ],
+      "transport": {
+        "type": "ws",
+        "path": "/api/v2/telemetry/stream_8f91a"
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}
