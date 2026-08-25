@@ -2,15 +2,6 @@
   "log": {
     "level": "fatal"
   },
-  "dns": {
-    "servers": [
-      {
-        "tag": "dns-remote",
-        "address": "1.1.1.1",
-        "detour": "direct"
-      }
-    ]
-  },
   "inbounds": [
     {
       "type": "vless",
@@ -19,7 +10,7 @@
       "listen_port": 10086,
       "users": [
         {
-          "uuid": "d8f1e2a3-b4c5-4d6e-8f9a-0b1c2d3e4f5a"
+          "uuid": "你的uuid"
         }
       ],
       "transport": {
@@ -31,8 +22,7 @@
   "outbounds": [
     {
       "type": "direct",
-      "tag": "direct",
-      "domain_strategy": "prefer_ipv4"
+      "tag": "direct"
     }
   ]
 }
